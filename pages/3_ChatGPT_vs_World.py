@@ -12,15 +12,14 @@ from langchain.llms import OpenAI
 from langchain.chat_models import ChatOpenAI
 from langchain.agents import load_tools, initialize_agent
 from langchain.chains.conversation.memory import ConversationBufferMemory
+from langchain.callbacks import StreamlitCallbackHandler
 
-llm = OpenAI(model_name="gpt-3.5-turbo", temperature=0)
+llm = OpenAI(model_name="gpt-3.5-turbo", temperature=0, streaming=True)
 tools = load_tools(["serpapi"], llm=llm) 
 
 # Finally, let's initialize an agent with the tools, the language model, and the type of agent we want to use.
 agent = initialize_agent(tools, llm, agent="zero-shot-react-description", verbose=True)
 
-async def run_agent(prompt):
-    return agent.run(prompt)
 
 ### https://gist.github.com/scotta/1063364
 ### based on: http://www.catalysoft.com/articles/StrikeAMatch.html
@@ -128,8 +127,11 @@ def get_jeopardy_response_from_llm_no_chain(category, clue):
 
 def get_jeopardy_response_from_llm_with_chain(category, clue):
 
-  prompt = f"This is Jeopardy! The category is {category}. The clue is \"{clue}\". You can perform any necessary calculations to get the answer. Do not respond in the form of a question!"
-  return agent.run(prompt)
+    prompt = f"This is Jeopardy! The category is {category}. The clue is \"{clue}\". You can perform any necessary calculations to get the answer. Do not respond in the form of a question!"
+
+    return agent.run(prompt)
+
+
 
 def get_random_question_from_cluebase(difficulty, category):
 
@@ -231,9 +233,12 @@ def main():
             guess = get_jeopardy_response_from_llm_no_chain(category, question)
         else:
             #guess = get_jeopardy_response_from_llm_with_chain(category, question)
-            prompt = f"This is Jeopardy! The category is {category}. The clue is \"{question}\". You can perform any necessary calculations to get the answer. Do not respond in the form of a question!"
-            guess = agent.run(prompt)
-        response.write(f"ChatGPT response: {guess}")
+            prompt = f"This is Jeopardy! The category is {category}. The clue is \"{question}\". You can perform any necessary calculations to get the answer. Answer in the form of a question!"
+            st_callback = StreamlitCallbackHandler(st.container())
+            response = agent.run(prompt, callbacks=[st_callback])
+            st.write(response)
+            
+
             
 
 if __name__ == "__main__":

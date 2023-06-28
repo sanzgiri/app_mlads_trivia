@@ -1,12 +1,6 @@
-import pandas as pd
-import re
-import time
-import os
-
-import streamlit as st
 import requests
 import json
-from footer import footer
+import re
 import random
 
 ### https://gist.github.com/scotta/1063364
@@ -16,9 +10,7 @@ import random
 
 from langchain.llms import OpenAI
 from langchain.chat_models import ChatOpenAI
-
 llm = OpenAI(model_name="gpt-3.5-turbo", temperature=0.7)
-
 
 def _get_character_pairs(text):
     """Returns a defaultdict(int) of adjacent character pair counts.
@@ -104,7 +96,7 @@ def compare_strings(string1, string2):
                 intersection_count += larger_dict[pair]
 
     return (2.0 * intersection_count) / (s1_size + s2_size)
-    
+
 
 def sanitize(string):
     string = re.sub(r"/[^\w\s]/i", "", string)
@@ -114,12 +106,34 @@ def sanitize(string):
     return string
 
 
-def generate_question(difficulty, category):
+def generate_question_from_archive(difficulty, category):
+
+  if difficulty is None:
+      difficulty = 5
+
+  if category is not None:
+    url = f"http://cluebase.lukelav.in/clues/random?category='{category}'&difficulty={int(difficulty)}"
+  else:
+    url = f"http://cluebase.lukelav.in/clues/random?difficulty={int(difficulty)}"
+
+  response = requests.get(url)
+  data = json.loads(response.text)
+  print(url, data)
+  clue = data['data'][0]['clue']
+  category = data['data'][0]['category']
+  true_answer = data['data'][0]['response']
+  value = difficulty*200
+  return [category, clue, true_answer, value]
+
+
+def generate_question_from_chatgpt(difficulty, category):
 
   if category is None:
     if difficulty is None:
       prompt = f"""This is Jeopardy!
 Generate a question worth {random.randrange(1,5)*200} points.
+Try to generate questions from categories that combine wordplay and trivia.
+You should know the answer to the question you are asking.
 Provide the question, category, points and correct answer in python dictionary format.
 Do not specify the correct answer in the form of a question!
 """
@@ -137,8 +151,7 @@ Generate a question from category {category} and a random difficulty level.
 Difficuly levels range from 1-5 with 1 being most easy and 5 being most difficult.
 Points are 200 times the difficulty level. 
 Provide the question, category, points and correct answer in python dictionary format.
-"""    
-      print(prompt)
+"""
     else:
       prompt =  f"""This is Jeopardy!
 Generate a question from category {category} and difficulty level {difficulty}. 
@@ -150,100 +163,3 @@ Provide the question, category, points and correct answer in python dictionary f
   response = llm(prompt)
   res_dict = json.loads(response)
   return [res_dict["category"], res_dict["question"], res_dict["answer"], res_dict["points"]]
-
-
-
-def init(heart: int = 3, 
-         theme: str = "Xandr",
-         post_init = False):
-    if not post_init:
-        # Used to prevent "please make a guess" warning when starting a brand new session
-        st.session_state.start = 0  
-        # Distinguish between a brand new session and restart
-        st.session_state.input = 0
-        # Track number of points scored in a game
-        st.session_state.points = 0
-        # Track number of lives remaining
-        st.session_state.heart = heart
-        # Track total number of questions received in a game
-        st.session_state.nq = 0
-        # Track number of questions answered correctly in a game
-        st.session_state.answered = 0
-        # Track question theme
-        st.session_state.theme = theme
-
-    st.session_state.start = 0
-    st.session_state.question = generate_question(None, theme)
-    st.session_state.lives = heart
-
-
-def restart():
-    init(st.session_state.lives,
-         st.session_state.theme,
-         post_init=True)
-    st.session_state.input += 1
-
-
-def main():
-    
-    st.title("This is Jeopardy!")
-    st.write("##### **ChatGPT asks, Contestant responds**")
-    st.write("")
-
-    if 'question' not in st.session_state:
-        init()
-
-    reset, points, lives, settings = st.columns([2, 2, 2, 6], gap="small")
-    reset.button(f'Reset', on_click=init)
-
-    with settings.expander('Settings'):
-        theme = st.selectbox("Theme", ("Xandr", "General", "Events after Sep 2021", "Wordplay", "Math & Abstract Reasoning"), key='theme')
-        st.select_slider('Set lives', list(range(1, 6)), 3, key='heart', on_change=restart)
-
-    header1, header2, header3, placeholder, debug = st.empty(), st.empty(), st.empty(), st.empty(), st.empty()
-
-    category = st.session_state.question[0]
-    question = st.session_state.question[1]
-    answer = st.session_state.question[2]
-    value = st.session_state.question[3]
-    prev_guess = ''
-
-    header1.write(f"**Category:** {category}")
-    header2.write(f"**Clue:** {question}")
-    header3.write(f"**Points:** {value}")
-    guess = placeholder.text_input(f'Response',key=st.session_state.input).lower()
-     
-    if not guess:
-        if st.session_state.start != 0 and guess == prev_guess:
-            debug.warning('Please make a guess')
-    else:
-        st.session_state.nq += 1
-        prev_guess = guess
-        sresponse = sanitize(guess)
-        sanswer = sanitize(answer)
-        sanswer = sanswer.split()[-1]
-        if (compare_strings(sresponse, sanswer) >= 0.5):
-            debug.success(f"**Correct**, the answer was: {answer}! 🎈")
-            st.session_state.points += value
-            st.session_state.answered += 1
-            st.button('Next', on_click=restart)
-        else:
-            debug.error(f"**Incorrect**, the answer was: {answer}! 😓")
-            st.session_state.points -= value
-            st.session_state.lives -= 1
-            if st.session_state.lives > 0:            
-                st.button('Next', on_click=restart)
-
-#    if st.session_state.lives == 0:
-#        score = f"{st.session_state.points} ({st.session_state.answered}/{st.session_state.nq})"
-#        debug.error(f"**Incorrect**, the answer was: {answer}! **Sorry, Game Over** Your score: {score} 😓")
-#        st.button('Play again?', on_click=init)
-        
-    lives.button(f'{("❤️" * st.session_state.lives) if st.session_state.lives else "💀 Lost"}')
-    points.button(f'🏆 {st.session_state.points}')
-
- 
-
-if __name__ == "__main__":
-    main()
-    footer()
