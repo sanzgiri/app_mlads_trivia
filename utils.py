@@ -108,22 +108,38 @@ def sanitize(string):
 
 def generate_question_from_archive(difficulty, category):
 
-  if difficulty is None:
-      difficulty = 5
-
   if category is not None:
-    url = f"http://cluebase.lukelav.in/clues/random?category='{category}'&difficulty={int(difficulty)}"
+     url = f"http://cluebase.lukelav.in/clues/random?category='{category}'"
+  elif difficulty is not None:
+    url = f"http://cluebase.lukelav.in/clues/random?difficulty='{difficulty}'"
   else:
-    url = f"http://cluebase.lukelav.in/clues/random?difficulty={int(difficulty)}"
-
+    url = "http://cluebase.lukelav.in/clues/random"
+    
   response = requests.get(url)
   data = json.loads(response.text)
   print(url, data)
-  clue = data['data'][0]['clue']
-  category = data['data'][0]['category']
-  true_answer = data['data'][0]['response']
-  value = difficulty*200
-  return [category, clue, true_answer, value]
+  if len(data['data']) == 0:
+    print("No questions found")
+    return []
+  else:
+    clue = data['data'][0]['clue']
+    category = data['data'][0]['category']
+    true_answer = data['data'][0]['response']
+    value = 1000
+    return [category, clue, true_answer, value]
+
+
+def get_jeopardy_response_from_llm_no_chain(category, clue):
+
+  prompt = f"This is Jeopardy! The category is {category}. The clue is \"{clue}\". You can perform any necessary calculations to get the answer. You should answer in as few words as possible. You will only provide the answer, you will not respond in the form of a question."
+  return llm(prompt)
+
+
+def get_jeopardy_response_from_llm_with_chain(category, clue):
+
+    prompt = f"This is Jeopardy! The category is {category}. The clue is \"{clue}\". You can perform any necessary calculations to get the answer. You will not respond in the form of a question!"
+
+    return agent.run(prompt)
 
 
 def generate_question_from_chatgpt(difficulty, category):
@@ -131,8 +147,7 @@ def generate_question_from_chatgpt(difficulty, category):
   if category is None:
     if difficulty is None:
       prompt = f"""This is Jeopardy!
-Generate a question worth {random.randrange(1,5)*200} points.
-Try to generate questions from categories that combine wordplay and trivia.
+Generate a tough trivia question worth {random.randrange(1,5)*200} points.
 You should know the answer to the question you are asking.
 Provide the question, category, points and correct answer in python dictionary format.
 Do not specify the correct answer in the form of a question!
